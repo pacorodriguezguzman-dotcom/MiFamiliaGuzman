@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Árbol Genealógico - Línea Sanguínea y Eje de Parejas - Familia Guzmán Martínez</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        .node circle { fill: #ffffff; stroke: #059669; stroke-width: 2.5px; }
+        .node text { font: 10.5px sans-serif; fill: #1e293b; font-weight: 600; pointer-events: none; }
+        .link { fill: none; stroke: #94a3b8; stroke-width: 1.5px; }
+        .link-spouse { fill: none; stroke: #d97706; stroke-width: 1.8px; stroke-dasharray: 3,3; }
+        
+        .node-abuelos circle { fill: #d97706; stroke: #b45309; stroke-width: 3.5px; }
+        .node-hijo circle { fill: #0d9488; stroke: #0f766e; }
+        .node-conyuge circle { fill: #f59e0b; stroke: #d97706; }
+        .node-primo circle { fill: #0d9488; stroke: #0f766e; }
+        .node-nieto circle { fill: #7c3aed; stroke: #6d28d9; }
+        .node-bisnieto circle { fill: #db2777; stroke: #be185d; }
+        
+        .node.defuncion circle { stroke: #64748b !important; fill: #f1f5f9 !important; }
+
+        .photo-btn { cursor: pointer; font-size: 11px; transition: transform 0.2s; }
+        .photo-btn:hover { transform: scale(1.2); }
+    </style>
+</head>
+<body class="bg-amber-50/30 text-slate-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-[#2c221e] text-amber-50 border-b border-amber-900/20 px-6 py-3 flex flex-wrap items-center justify-between shadow-md z-20">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center text-white font-bold shadow-inner">
+                🌳
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-base font-bold text-amber-100">Familia Guzmán Martínez</h1>
+                    <span id="data-status" class="bg-emerald-800 text-emerald-100 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider">Carga tu CSV</span>
+                </div>
+                <p class="text-xs text-amber-200/70">Árbol con Progenitor Único y Eje Vertical de Parejas • Fotos Columna A</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-2 mt-2 sm:mt-0">
+            <div class="relative">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">🔍</span>
+                <input type="text" id="search-input" placeholder="Buscar familiar por nombre..." 
+                    class="pl-9 pr-4 py-1.5 text-xs bg-amber-950/40 border border-amber-800/40 rounded-lg text-amber-100 placeholder-amber-300/50 focus:outline-none focus:border-amber-500 w-72"
+                    oninput="searchMember(this.value)">
+            </div>
+
+            <button onclick="exportarVersionCompartir()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-500 transition shadow flex items-center gap-1.5">
+                💾 Descargar Fam_Guzmán.html
+            </button>
+
+            <label class="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 transition cursor-pointer shadow flex items-center gap-1.5">
+                📁 Cargar Google Sheets (CSV)
+                <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="handleCSVUpload(event)">
+            </label>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 relative flex overflow-hidden">
+        
+        <!-- Sidebar Izquierdo (Plegable) -->
+        <div id="left-sidebar" class="w-80 bg-amber-50/90 backdrop-blur border-r border-amber-200/60 flex flex-col shadow-inner z-10 transition-all duration-300 overflow-hidden shrink-0">
+            <div class="p-4 border-b border-amber-200/60 bg-amber-100/40 flex items-center justify-between min-w-[20rem]">
+                <div>
+                    <h2 class="font-bold text-slate-800 text-sm">Ramas Familiares</h2>
+                    <p id="branches-count" class="text-[11px] text-slate-500">Carga tu base de datos para ver los registros</p>
+                </div>
+                <button onclick="toggleLeftSidebar()" title="Minimizar panel de ramas" class="w-7 h-7 rounded-lg bg-amber-200/60 hover:bg-amber-300/80 text-amber-950 font-bold flex items-center justify-center transition text-sm">
+                    «
+                </button>
+            </div>
+
+            <div id="branches-list" class="flex-1 overflow-y-auto p-3 space-y-2.5 min-w-[20rem]">
+                <div class="p-4 text-center text-xs text-slate-500 italic">
+                    Haz clic en <strong class="text-emerald-700">"Cargar Google Sheets (CSV)"</strong> para importar tus registros.
+                </div>
+            </div>
+        </div>
+
+        <!-- Canvas Area -->
+        <div id="canvas-container" class="flex-1 bg-[#fcfbf9] relative overflow-hidden cursor-grab">
+            
+            <button id="expand-branches-btn" onclick="toggleLeftSidebar()" title="Mostrar Ramas Familiares" class="hidden absolute top-4 left-4 z-10 px-3 py-2 rounded-xl bg-amber-900/90 hover:bg-amber-800 text-amber-50 text-xs font-semibold shadow-lg backdrop-blur flex items-center gap-1.5 transition">
+                <span>☰</span> Ramas »
+            </button>
+
+            <svg id="tree-svg" class="w-full h-full"></svg>
+            
+            <div class="absolute bottom-6 right-6 bg-white/90 backdrop-blur border border-slate-200 p-1.5 rounded-2xl shadow-xl flex items-center gap-1 z-10">
+                <button onclick="zoomIn()" class="w-8 h-8 rounded-xl hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center text-lg">+</button>
+                <button onclick="zoomOut()" class="w-8 h-8 rounded-xl hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center text-lg">-</button>
+                <div class="w-[1px] h-5 bg-slate-200 mx-0.5"></div>
+                <button onclick="resetZoom()" class="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-medium text-xs shadow">Centrar Árbol</button>
+            </div>
+        </div>
+
+        <!-- Sidebar Details -->
+        <div id="sidebar" class="w-80 bg-white border-l border-slate-200 p-5 flex flex-col shadow-2xl z-25 translate-x-full absolute right-0 top-0 bottom-0 transition-transform duration-300">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 id="panel-title" class="font-bold text-slate-900 text-base">Ficha del Familiar</h3>
+                <button onclick="closeSidebar()" class="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+            </div>
+            <div id="panel-content" class="py-4 text-sm text-slate-600 space-y-3 flex-1 overflow-y-auto">
+                <p class="text-slate-400 italic">Selecciona un nodo del árbol para ver su información detallada.</p>
+            </div>
+            <div class="pt-3 border-t border-slate-100 text-xs text-slate-400 text-center">
+                Fam Guzmán Vergara • 2026
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Visor de Fotografías -->
+    <div id="photo-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-5 relative flex flex-col items-center">
+            <button onclick="closePhotoModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 font-bold text-2xl">&times;</button>
+            <h3 id="modal-photo-title" class="font-bold text-slate-800 text-base mb-3">Fotografía Familiar</h3>
+            <div class="w-full bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center max-h-[65vh] border border-slate-200">
+                <img id="modal-photo-img" src="" alt="Foto familiar" class="object-contain max-h-[60vh] w-auto">
+            </div>
+            <div class="mt-4 flex gap-3">
+                <a id="modal-full-link" href="" target="_blank" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-medium text-xs shadow flex items-center gap-1.5">
+                    🔍 Abrir imagen completa en pestaña
+                </a>
+                <button onclick="closePhotoModal()" class="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-xs">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Principal D3.js -->
+    <script>
+        let familyData = {
+            foto: "",
+            filaCSV: 4,
+            name: "✝ Roberto Guzmán Llamas",
+            subText: "(1933 - 1975)",
+            relation: "Abuelo Fundador",
+            group: "abuelos",
+            nacimiento: "1933",
+            defuncion: "1975-10-28",
+            comentario: "",
+            details: "Tronco principal de la familia.",
+            branchesSummary: [],
+            spouseNode: {
+                foto: "",
+                filaCSV: 5,
+                name: "✝ Maria de Jesús Martinez Castro",
+                subText: "(1915 - 1982)",
+                relation: "Abuela Fundadora",
+                group: "conyuge",
+                nacimiento: "1915-03-29",
+                defuncion: "1982-06-16",
+                comentario: ""
+            },
+            children: []
+        };
+
+        let svg, g, zoom, root;
+        let searchableNodes = [];
+
+        function orthogonalPath(x1, y1, x2, y2, elbowRatio = 0.55) {
+            const midX = x1 + (x2 - x1) * elbowRatio;
+            return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+        }
+
+        function toggleLeftSidebar() {
+            const leftSidebar = document.getElementById('left-sidebar');
+            const expandBtn = document.getElementById('expand-branches-btn');
+            const isCollapsed = leftSidebar.classList.contains('w-0');
+
+            if (isCollapsed) {
+                leftSidebar.classList.remove('w-0', 'border-r-0');
+                leftSidebar.classList.add('w-80', 'border-r');
+                expandBtn.classList.add('hidden');
+            } else {
+                leftSidebar.classList.remove('w-80', 'border-r');
+                leftSidebar.classList.add('w-0', 'border-r-0');
+                expandBtn.classList.remove('hidden');
+            }
+        }
+
+        function initTree() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            d3.select("#tree-svg").selectAll("*").remove();
+
+            svg = d3.select("#tree-svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            zoom = d3.zoom()
+                .scaleExtent([0.05, 4])
+                .on("zoom", (event) => g.attr("transform", event.transform));
+
+            svg.call(zoom);
+            g = svg.append("g");
+
+            root = d3.hierarchy(familyData);
+            updateViz();
+
+            svg.call(zoom.transform, d3.zoomIdentity.translate(180, height / 2).scale(0.6));
+
+            if (familyData.branchesSummary && familyData.branchesSummary.length > 0) {
+                document.getElementById('branches-count').innerText = `${familyData.branchesSummary.length} ramas principales cargadas`;
+                renderUniqueBranchesList(familyData.branchesSummary);
+            }
+        }
+
+        function measurePersonBlock(person) {
+            const rowStep = 48;
+            const spouseRowStep = 36;
+
+            if (person.partners && person.partners.length > 0) {
+                let totalPartnersH = 0;
+                person.partners.forEach((partner, idx) => {
+                    const pChildren = partner.children || [];
+                    let branchH = 0;
+                    pChildren.forEach(ch => {
+                        branchH += measurePersonBlock(ch);
+                    });
+                    const minSlot = idx === 0 ? (rowStep + spouseRowStep) : (spouseRowStep * 1.35);
+                    totalPartnersH += Math.max(branchH, minSlot);
+                });
+                return Math.max(rowStep + spouseRowStep, totalPartnersH);
+            }
+
+            const hasVerticalCouple = Boolean(person.spouseNode);
+            const selfHeight = hasVerticalCouple ? (rowStep + spouseRowStep) : rowStep;
+
+            let childrenHeight = 0;
+            if (person.children && person.children.length > 0) {
+                person.children.forEach(ch => {
+                    childrenHeight += measurePersonBlock(ch);
+                });
+            }
+
+            return Math.max(selfHeight, childrenHeight);
+        }
+
+        function updateViz() {
+            g.selectAll("*").remove();
+            searchableNodes = [];
+
+            const colSpacing = 245;
+            const rowStep = 48;
+            const spouseRowStep = 36;
+
+            const drawnNodes = [];
+            const orthogonalLinks = [];
+            const verticalSpouseLinks = [];
+
+            function layoutPerson(person, x, topY) {
+                const blockH = measurePersonBlock(person);
+
+                if (person.partners && person.partners.length > 0) {
+                    const partners = person.partners;
+                    const partnerSlots = [];
+                    let cursorY = topY;
+
+                    partners.forEach((partner, idx) => {
+                        const pChildren = partner.children || [];
+                        const branchH = pChildren.reduce((acc, ch) => acc + measurePersonBlock(ch), 0);
+                        const minSlot = idx === 0 ? (rowStep + spouseRowStep) : (spouseRowStep * 1.35);
+                        const slotH = Math.max(branchH, minSlot);
+
+                        partnerSlots.push({
+                            partner,
+                            topY: cursorY,
+                            height: slotH,
+                            branchH
+                        });
+
+                        cursorY += slotH;
+                    });
+
+                    const firstSlot = partnerSlots[0];
+                    const personY = firstSlot.topY + 22;
+
+                    drawnNodes.push({
+                        data: person,
+                        x: x,
+                        y: personY,
+                        isSpouse: false,
+                        radius: person.group === "abuelos" ? 7 : 6
+                    });
+                    searchableNodes.push({ data: person, x: x, y: personY });
+
+                    const axisYs = [personY];
+                    const elbowX = x + 52;
+
+                    partnerSlots.forEach((slot, idx) => {
+                        const { partner, topY: slotTopY, height: slotH, branchH } = slot;
+                        const pChildren = partner.children || [];
+
+                        let partnerY;
+                        if (idx === 0) {
+                            partnerY = personY + spouseRowStep;
+                        } else {
+                            partnerY = slotTopY + slotH / 2;
+                            const minPartnerY = slotTopY + 16;
+                            const maxPartnerY = slotTopY + slotH - 16;
+                            partnerY = Math.max(minPartnerY, Math.min(maxPartnerY, partnerY));
+                        }
+
+                        if (partner.spouseNode) {
+                            drawnNodes.push({
+                                data: partner.spouseNode,
+                                x: x,
+                                y: partnerY,
+                                isSpouse: true,
+                                radius: 5
+                            });
+                            searchableNodes.push({ data: partner.spouseNode, x: x, y: partnerY });
+                            axisYs.push(partnerY);
+                        }
+
+                        if (pChildren.length > 0) {
+                            const unionY = partner.spouseNode
+                                ? (idx === 0 ? (personY + partnerY) / 2 : partnerY)
+                                : personY;
+
+                            const childTargetX = x + colSpacing;
+                            let childCursorY = slotTopY + (slotH - branchH) / 2;
+                            const childEntryYs = [];
+
+                            pChildren.forEach(ch => {
+                                const chH = measurePersonBlock(ch);
+                                const chGuzmanY = layoutPerson(ch, childTargetX, childCursorY);
+                                childEntryYs.push(chGuzmanY);
+
+                                orthogonalLinks.push({
+                                    customD: `M ${x + 6} ${unionY} L ${elbowX} ${unionY} L ${elbowX} ${chGuzmanY} L ${childTargetX - 8} ${chGuzmanY}`
+                                });
+
+                                childCursorY += chH;
+                            });
+                        }
+                    });
+
+                    const minAxisY = Math.min(...axisYs);
+                    const maxAxisY = Math.max(...axisYs);
+                    if (maxAxisY > minAxisY) {
+                        verticalSpouseLinks.push({
+                            x: x,
+                            y1: minAxisY + 6,
+                            y2: maxAxisY - 5
+                        });
+                    }
+
+                    return personY;
+                }
+
+                if (person.spouseNode) {
+                    const hasKids = person.children && person.children.length > 0;
+                    const childrenH = hasKids ? person.children.reduce((acc, ch) => acc + measurePersonBlock(ch), 0) : 0;
+                    const centerBlockY = topY + blockH / 2;
+
+                    const primaryY = centerBlockY - spouseRowStep / 2;
+                    const spouseY = centerBlockY + spouseRowStep / 2;
+                    const unionY = (primaryY + spouseY) / 2;
+
+                    drawnNodes.push({
+                        data: person,
+                        x: x,
+                        y: primaryY,
+                        isSpouse: false,
+                        radius: 6
+                    });
+                    searchableNodes.push({ data: person, x: x, y: primaryY });
+
+                    drawnNodes.push({
+                        data: person.spouseNode,
+                        x: x,
+                        y: spouseY,
+                        isSpouse: true,
+                        radius: 5
+                    });
+                    searchableNodes.push({ data: person.spouseNode, x: x, y: spouseY });
+
+                    verticalSpouseLinks.push({
+                        x: x,
+                        y1: primaryY + 6,
+                        y2: spouseY - 5
+                    });
+
+                    if (hasKids) {
+                        const childTargetX = x + colSpacing;
+                        let childCursorY = unionY - childrenH / 2;
+                        const elbowX = x + 48;
+
+                        person.children.forEach(ch => {
+                            const chH = measurePersonBlock(ch);
+                            const chGuzmanY = layoutPerson(ch, childTargetX, childCursorY);
+
+                            orthogonalLinks.push({
+                                customD: `M ${x + 6} ${unionY} L ${elbowX} ${unionY} L ${elbowX} ${chGuzmanY} L ${childTargetX - 8} ${chGuzmanY}`
+                            });
+
+                            childCursorY += chH;
+                        });
+                    }
+
+                    return primaryY;
+                }
+
+                const personY = topY + blockH / 2;
+
+                drawnNodes.push({
+                    data: person,
+                    x: x,
+                    y: personY,
+                    isSpouse: false,
+                    radius: 6
+                });
+                searchableNodes.push({ data: person, x: x, y: personY });
+
+                if (person.children && person.children.length > 0) {
+                    const childTargetX = x + colSpacing;
+                    const totalChildrenH = person.children.reduce((acc, ch) => acc + measurePersonBlock(ch), 0);
+                    let childCursorY = personY - totalChildrenH / 2;
+                    const elbowX = x + 48;
+
+                    person.children.forEach(ch => {
+                        const chH = measurePersonBlock(ch);
+                        const chGuzmanY = layoutPerson(ch, childTargetX, childCursorY);
+
+                        orthogonalLinks.push({
+                            customD: `M ${x + 6} ${personY} L ${elbowX} ${personY} L ${elbowX} ${chGuzmanY} L ${childTargetX - 8} ${chGuzmanY}`
+                        });
+
+                        childCursorY += chH;
+                    });
+                }
+
+                return personY;
+            }
+
+            const grandParentX = 0;
+            const grandParentY = -18;
+            const grandSpouseY = 18;
+            const grandUnionY = 0;
+
+            drawnNodes.push({
+                data: familyData,
+                x: grandParentX,
+                y: grandParentY,
+                isSpouse: false,
+                radius: 7
+            });
+            searchableNodes.push({ data: familyData, x: grandParentX, y: grandParentY });
+
+            if (familyData.spouseNode) {
+                drawnNodes.push({
+                    data: familyData.spouseNode,
+                    x: grandParentX,
+                    y: grandSpouseY,
+                    isSpouse: true,
+                    radius: 5.5
+                });
+                searchableNodes.push({ data: familyData.spouseNode, x: grandParentX, y: grandSpouseY });
+
+                verticalSpouseLinks.push({
+                    x: grandParentX,
+                    y1: grandParentY + 7,
+                    y2: grandSpouseY - 5
+                });
+            }
+
+            if (familyData.children && familyData.children.length > 0) {
+                const totalBranchesH = familyData.children.reduce((acc, br) => acc + measurePersonBlock(br), 0);
+                const branchX = grandParentX + colSpacing;
+                let cursorY = -totalBranchesH / 2;
+                const trunkAxisX = grandParentX + 55;
+
+                orthogonalLinks.push({
+                    customD: `M ${grandParentX + 6} ${grandUnionY} L ${trunkAxisX} ${grandUnionY}`
+                });
+
+                const tioNodeYs = [];
+                familyData.children.forEach(br => {
+                    const brH = measurePersonBlock(br);
+                    const tioGuzmanY = layoutPerson(br, branchX, cursorY);
+                    tioNodeYs.push(tioGuzmanY);
+
+                    orthogonalLinks.push({
+                        customD: `M ${trunkAxisX} ${tioGuzmanY} L ${branchX - 8} ${tioGuzmanY}`
+                    });
+
+                    cursorY += brH;
+                });
+
+                if (tioNodeYs.length > 1) {
+                    orthogonalLinks.push({
+                        customD: `M ${trunkAxisX} ${Math.min(...tioNodeYs)} L ${trunkAxisX} ${Math.max(...tioNodeYs)}`
+                    });
+                }
+            }
+
+            g.selectAll(".link")
+                .data(orthogonalLinks)
+                .enter().append("path")
+                .attr("class", "link")
+                .attr("d", d => d.customD || orthogonalPath(d.x1, d.y1, d.x2, d.y2));
+
+            g.selectAll(".link-vertical-spouses")
+                .data(verticalSpouseLinks)
+                .enter().append("path")
+                .attr("class", "link-spouse")
+                .attr("d", d => `M ${d.x} ${d.y1} L ${d.x} ${d.y2}`);
+
+            const nodeSel = g.selectAll(".node-item")
+                .data(drawnNodes)
+                .enter().append("g")
+                .attr("class", d => `node node-item node-${d.data.group || (d.isSpouse ? 'conyuge' : 'hijo')} ${d.data.defuncion ? 'defuncion' : ''}`)
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+
+            nodeSel.append("circle")
+                .attr("r", d => d.radius)
+                .on("click", (event, d) => showDetails(d.data));
+
+            const textSel = nodeSel.append("text")
+                .attr("x", -10)
+                .attr("y", -3)
+                .attr("text-anchor", "end");
+
+            textSel.append("tspan")
+                .attr("x", -10)
+                .attr("dy", "0em")
+                .attr("fill", d => d.isSpouse ? "#b45309" : "#1e293b")
+                .style("cursor", "pointer")
+                .text(d => d.data.name || "")
+                .on("click", (event, d) => showDetails(d.data));
+
+            textSel.append("tspan")
+                .attr("x", -10)
+                .attr("dy", "1.1em")
+                .attr("fill", d => d.isSpouse ? "#92400e" : "#64748b")
+                .style("font-size", "9.5px")
+                .text(d => d.data.subText || "");
+
+            nodeSel.filter(d => d.data.foto && d.data.foto.trim() !== "")
+                .append("text")
+                .attr("x", -2)
+                .attr("y", -1)
+                .attr("class", "photo-btn")
+                .text("📷")
+                .on("click", (event, d) => abrirFoto(d.data.foto, d.data.name));
+        }
+
+        function abrirFoto(nombreArchivo, nombreFamiliar) {
+            const modal = document.getElementById('photo-modal');
+            const modalImg = document.getElementById('modal-photo-img');
+            const modalTitle = document.getElementById('modal-photo-title');
+            const modalLink = document.getElementById('modal-full-link');
+
+            const cleanFile = String(nombreArchivo || '').trim();
+            const isSpecialScheme = /^(data:|blob:|https?:\/\/)/i.test(cleanFile);
+            const sep = cleanFile.includes('?') ? '&' : '?';
+            const srcFresca = isSpecialScheme ? cleanFile : `${cleanFile}${sep}t=${Date.now()}`;
+
+            modalTitle.innerText = `Fotografía de: ${nombreFamiliar}`;
+            modalLink.href = cleanFile;
+
+            modalImg.onerror = function() {
+                alert(`No se pudo encontrar el archivo "${cleanFile}" en la carpeta.\n\nAsegúrate de que el nombre escrito en la Columna A coincida exactamente con el archivo en tu carpeta.`);
+            };
+
+            modalImg.src = srcFresca;
+            modal.classList.remove('hidden');
+        }
+
+        function closePhotoModal() {
+            document.getElementById('photo-modal').classList.add('hidden');
+        }
+
+        function handleCSVUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: false,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    parseHorizontalSpreadsheet(results.data);
+                }
+            });
+        }
+
+        function extractYear(dateStr) {
+            if (!dateStr) return "";
+            dateStr = String(dateStr).trim();
+            const match = dateStr.match(/\b(19\d{2}|20\d{2}|18\d{2})\b/);
+            if (match) return match[1];
+            if (dateStr.length >= 4) {
+                const last4 = dateStr.slice(-4);
+                if (/^\d{4}$/.test(last4)) return last4;
+                const first4 = dateStr.slice(0, 4);
+                if (/^\d{4}$/.test(first4)) return first4;
+            }
+            return dateStr;
+        }
+
+        function calcularEdadDesdeNacimiento(nacStr) {
+            const yearStr = extractYear(nacStr);
+            const year = parseInt(yearStr, 10);
+            if (!year || isNaN(year)) return "";
+            const currentYear = new Date().getFullYear();
+            const diff = currentYear - year;
+            return diff >= 0 ? `${diff}` : "";
+        }
+
+        function parseHorizontalSpreadsheet(rows) {
+    let tíosMap = new Map();
+    let currentTioObj = null;
+    let currentPartnerObj = null;
+    let currentPrimo = null;
+    let currentNieto = null;
+
+    const getVal = (r, idx) => (r && r[idx] !== undefined && r[idx] !== null) ? String(r[idx]).trim() : "";
+
+    rows.forEach((row, idx) => {
+        if (idx < 3) return; // Inicia desde la Fila 4 del CSV (idx = 3)
+
+        const filaExcel = idx + 1;
+        const colA = getVal(row, 0);
+        const colB = getVal(row, 1); // Abuelo (Fila 4)
+        const colC = getVal(row, 2); // Abuela (Fila 5)
+        const colD = getVal(row, 3);
+        const colE = getVal(row, 4);
+        const colF = getVal(row, 5);
+        const colG = getVal(row, 6);
+        const colH = getVal(row, 7);
+        const colI = getVal(row, 8);
+        const colJ = getVal(row, 9);
+
+        const nac = getVal(row, 11);
+        const edad = getVal(row, 12);
+        const def = getVal(row, 13);
+
+        const formatMember = (nombre) => {
+            if (!nombre) return null;
+            let cleanName = nombre.trim();
+            let isDead = def !== "";
+
+            let displayName = isDead ? `✝ ${cleanName}` : cleanName;
+            let subStr = "";
+            if (isDead) {
+                let anioNac = extractYear(nac) || "????";
+                let anioDef = extractYear(def) || "????";
+                subStr = `(${anioNac} - ${anioDef})`;
+            } else if (edad !== "") {
+                subStr = `(${edad} años)`;
+            }
+
+            return {
+                foto: colA,
+                filaCSV: filaExcel,
+                name: displayName,
+                subText: subStr,
+                nacimiento: nac,
+                edad: edad,
+                defuncion: def,
+                comentario: ""
+            };
+        };
+
+        // Abuelo en Columna B, Fila 4 (su foto sale de Columna A, Fila 4)
+        if (filaExcel === 4 && colB !== "") {
+            const isDead = def !== "";
+            familyData.foto = colA;
+            familyData.filaCSV = filaExcel;
+            familyData.name = isDead ? `✝ ${colB}` : colB;
+            familyData.subText = isDead
+                ? `(${extractYear(nac) || "????"} - ${extractYear(def) || "????"})`
+                : (edad ? `(${edad} años)` : "");
+            familyData.nacimiento = nac;
+            familyData.edad = edad;
+            familyData.defuncion = def;
+        }
+
+        // Abuela en Columna C, Fila 5 (su foto sale de Columna A, Fila 5)
+        if (filaExcel === 5 && colC !== "") {
+            const isDead = def !== "";
+            familyData.spouseNode.foto = colA;
+            familyData.spouseNode.filaCSV = filaExcel;
+            familyData.spouseNode.name = isDead ? `✝ ${colC}` : colC;
+            familyData.spouseNode.subText = isDead
+                ? `(${extractYear(nac) || "????"} - ${extractYear(def) || "????"})`
+                : (edad ? `(${edad} años)` : "");
+            familyData.spouseNode.nacimiento = nac;
+            familyData.spouseNode.edad = edad;
+            familyData.spouseNode.defuncion = def;
+        }
+
+        if (colD !== "" && colD !== "Tios") {
+            const primary = formatMember(colD);
+            currentTioObj = {
+                ...primary,
+                rawName: colD,
+                relation: "Tío / Rama Principal",
+                group: "hijo",
+                partners: [],
+                children: []
+            };
+            tíosMap.set(colD, currentTioObj);
+            currentPartnerObj = null;
+            currentPrimo = null;
+            currentNieto = null;
+        }
+
+        if (colE !== "" && colE !== "Cónyuge" && colE !== "Pareja" && currentTioObj) {
+            const spouseMeta = formatMember(colE);
+            currentPartnerObj = {
+                spouseNode: { ...spouseMeta, relation: "Cónyuge / Pareja", group: "conyuge" },
+                children: []
+            };
+            currentTioObj.partners.push(currentPartnerObj);
+            currentPrimo = null;
+            currentNieto = null;
+        }
+
+        if (colF !== "" && colF !== "Primos") {
+            const primary = formatMember(colF);
+            currentPrimo = {
+                ...primary,
+                relation: "Primo/a",
+                group: "primo",
+                spouseNode: null,
+                partners: [],
+                children: []
+            };
+
+            if (currentTioObj) {
+                if (currentTioObj.partners.length === 0) {
+                    currentPartnerObj = { spouseNode: null, children: [] };
+                    currentTioObj.partners.push(currentPartnerObj);
+                }
+                currentTioObj.partners[currentTioObj.partners.length - 1].children.push(currentPrimo);
+            }
+            currentNieto = currentPrimo;
+        }
+        else if (colG !== "" && currentPrimo && !currentPrimo.spouseNode) {
+            const spouseMeta = formatMember(colG);
+            currentPrimo.spouseNode = { ...spouseMeta, relation: "Cónyuge", group: "conyuge" };
+        }
+
+        if (colH !== "" && colH !== "Nieto/ conyuge") {
+            const primary = formatMember(colH);
+            currentNieto = {
+                ...primary,
+                relation: "Nieto / Sobrino/a",
+                group: "nieto",
+                spouseNode: null,
+                partners: [],
+                children: []
+            };
+            if (currentPrimo) {
+                currentPrimo.children.push(currentNieto);
+            } else if (currentTioObj && currentTioObj.partners.length > 0) {
+                const activePartner = currentTioObj.partners[currentTioObj.partners.length - 1];
+                activePartner.children.push(currentNieto);
+            }
+        }
+        else if (colI !== "" && currentNieto && !currentNieto.spouseNode) {
+            const spouseMeta = formatMember(colI);
+            currentNieto.spouseNode = { ...spouseMeta, relation: "Cónyuge de Sobrino", group: "conyuge" };
+        }
+
+        if (colJ !== "" && colJ !== "bisnieto") {
+            const primary = formatMember(colJ);
+            const bisnieto = {
+                ...primary,
+                relation: "Bisnieto/a",
+                group: "bisnieto",
+                children: []
+            };
+            if (currentNieto) currentNieto.children.push(bisnieto);
+        }
+    });
+
+    let finalHijosList = [];
+    let branchesSummary = [];
+
+    tíosMap.forEach((tioObj, key) => {
+        finalHijosList.push({
+            name: tioObj.name,
+            subText: tioObj.subText,
+            foto: tioObj.foto,
+            filaCSV: tioObj.filaCSV,
+            nacimiento: tioObj.nacimiento,
+            edad: tioObj.edad,
+            defuncion: tioObj.defuncion,
+            comentario: tioObj.comentario || "",
+            relation: tioObj.relation,
+            group: tioObj.group,
+            partners: tioObj.partners || [],
+            children: tioObj.children || []
+        });
+
+        branchesSummary.push({
+            key: key,
+            displayName: tioObj.name,
+            partnersCount: tioObj.partners ? tioObj.partners.length : 0
+        });
+    });
+
+    if (finalHijosList.length > 0) {
+        familyData.children = finalHijosList;
+        familyData.branchesSummary = branchesSummary;
+        document.getElementById('data-status').innerText = "¡Sincronizado!";
+        const realCount = branchesSummary.length;
+        document.getElementById('branches-count').innerText = `${realCount} ramas principales cargadas`;
+        renderUniqueBranchesList(branchesSummary);
+        initTree();
+        alert(`¡Árbol generado con éxito (${realCount} ramas principales)!`);
+    }
+}
+        function renderUniqueBranchesList(branchesList) {
+            const container = document.getElementById('branches-list');
+            container.innerHTML = '';
+            branchesList.forEach((item, idx) => {
+                const index = idx + 1;
+                const key = item.key || item.displayName;
+                const partnersCount = item.partnersCount || 0;
+                const div = document.createElement('div');
+                div.className = "bg-white p-2.5 rounded-xl border border-amber-200/80 shadow-sm flex items-center justify-between hover:border-emerald-500 transition cursor-pointer";
+                div.innerHTML = `
+                    <div class="text-xs pointer-events-none">
+                        <p class="font-bold text-slate-800">${index}. ${key}</p>
+                        <p class="text-slate-500 text-[10px]">${partnersCount} pareja(s) / rama(s)</p>
+                    </div>
+                    <button class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white font-bold text-slate-600 flex items-center justify-center transition text-xs">→</button>
+                `;
+                div.onclick = () => {
+                    focusBranchByName(key);
+                    const leftSidebar = document.getElementById('left-sidebar');
+                    if (!leftSidebar.classList.contains('w-0')) {
+                        toggleLeftSidebar();
+                    }
+                };
+                container.appendChild(div);
+            });
+        }
+
+        function focusBranchByName(nombreTio) {
+            if (!searchableNodes || searchableNodes.length === 0) return;
+            const target = searchableNodes.find(n => n.data.name && n.data.name.toLowerCase().includes(nombreTio.toLowerCase()));
+            if (target) {
+                const scale = 0.9;
+                const x = 220 - target.x * scale;
+                const y = document.getElementById('canvas-container').clientHeight / 2 - target.y * scale;
+                svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+                showDetails(target.data);
+            }
+        }
+
+        function showDetails(data) {
+            const sidebar = document.getElementById('sidebar');
+            const content = document.getElementById('panel-content');
+            sidebar.classList.remove('translate-x-full');
+
+            const isDead = Boolean(data.defuncion && String(data.defuncion).trim() !== "");
+
+            let vitalInfoHtml = "";
+            if (isDead) {
+                vitalInfoHtml = `
+                    <p><strong>Nacimiento:</strong> ${data.nacimiento || 'No registrada'}</p>
+                    <p><strong>Defunción:</strong> ${data.defuncion}</p>
+                `;
+            } else {
+                const edadMostrar = (data.edad && String(data.edad).trim() !== "")
+                    ? `${data.edad} años`
+                    : (calcularEdadDesdeNacimiento(data.nacimiento) ? `${calcularEdadDesdeNacimiento(data.nacimiento)} años (aprox.)` : 'No registrada');
+                vitalInfoHtml = `
+                    <p><strong>Estado:</strong> Vivo/a</p>
+                    <p><strong>Edad:</strong> ${edadMostrar}</p>
+                `;
+            }
+
+            const comentarioActual = data.comentario || data.details || "";
+
+            content.innerHTML = `
+                <div>
+                    <span class="text-xs uppercase tracking-wider font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">${data.relation || 'Familiar'}</span>
+                    <h4 class="text-lg font-bold text-slate-900 mt-2">${data.name || 'Familiar'}</h4>
+                </div>
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs space-y-2">
+                    <p><strong>Fila en CSV:</strong> Línea ${data.filaCSV || 'Principal'}</p>
+                    <p><strong>Archivo de Foto (Col A):</strong> ${data.foto && data.foto.trim() !== "" ? data.foto : 'Ninguno asignado'}</p>
+                    ${vitalInfoHtml}
+                    <div id="btn-foto-container"></div>
+                </div>
+                <div class="bg-amber-50/70 p-3 rounded-xl border border-amber-200/80 space-y-2">
+                    <label for="comentario-input" class="block text-xs font-bold text-slate-800">Comentarios</label>
+                    <textarea id="comentario-input" rows="4" placeholder="Escribe notas, anécdotas o datos adicionales..."
+                        class="w-full p-2 text-xs text-slate-800 bg-white border border-amber-300/80 rounded-lg focus:outline-none focus:border-emerald-600 resize-y"></textarea>
+                    <div class="flex items-center justify-between gap-2">
+                        <span id="comentario-status" class="text-[11px] text-emerald-700 font-medium"></span>
+                        <button id="btn-guardar-comentario" type="button"
+                            class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium rounded-lg shadow transition">
+                            Guardar comentario
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            const textareaEl = document.getElementById('comentario-input');
+            const statusEl = document.getElementById('comentario-status');
+            const saveBtn = document.getElementById('btn-guardar-comentario');
+
+            if (textareaEl) {
+                textareaEl.value = comentarioActual;
+            }
+
+            if (saveBtn && textareaEl) {
+                saveBtn.onclick = () => {
+                    data.comentario = textareaEl.value.trim();
+                    if (statusEl) {
+                        statusEl.innerText = "Guardado ✓";
+                        setTimeout(() => { statusEl.innerText = ""; }, 2000);
+                    }
+                };
+            }
+
+            if (data.foto && data.foto.trim() !== "") {
+                const btn = document.createElement('button');
+                btn.className = "w-full mt-2 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-medium rounded-lg text-center shadow flex items-center justify-center gap-1.5";
+                btn.innerHTML = `📷 Ver Fotografía (${data.foto})`;
+                btn.onclick = () => abrirFoto(data.foto, data.name);
+                document.getElementById('btn-foto-container').appendChild(btn);
+            }
+        }
+
+        function closeSidebar() { document.getElementById('sidebar').classList.add('translate-x-full'); }
+        function resetZoom() { svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(180, document.getElementById('canvas-container').clientHeight / 2).scale(0.6)); }
+        function zoomIn() { svg.transition().duration(300).call(zoom.scaleBy, 1.3); }
+        function zoomOut() { svg.transition().duration(300).call(zoom.scaleBy, 0.7); }
+
+        function searchMember(query) {
+            if (!query || !searchableNodes || searchableNodes.length === 0) return;
+            const lower = query.toLowerCase();
+            const matched = searchableNodes.find(n => n.data.name && n.data.name.toLowerCase().includes(lower));
+            if (matched) {
+                const scale = 0.95;
+                const x = 240 - matched.x * scale;
+                const y = document.getElementById('canvas-container').clientHeight / 2 - matched.y * scale;
+                svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+                showDetails(matched.data);
+            }
+        }
+
+        function exportarVersionCompartir() {
+            if (!familyData.children || familyData.children.length === 0) {
+                alert("Primero carga tu archivo CSV para que el árbol tenga todos los datos.");
+                return;
+            }
+
+            const docClone = document.documentElement.cloneNode(true);
+
+            const headerButtons = docClone.querySelectorAll('label, button[onclick="exportarVersionCompartir()"]');
+            headerButtons.forEach(el => el.remove());
+
+            const badge = docClone.querySelector('#data-status');
+            if(badge) {
+                badge.innerText = "Versión Lista para Compartir";
+                badge.className = "bg-emerald-800 text-emerald-100 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider";
+            }
+
+            const svgEl = docClone.querySelector('#tree-svg');
+            if (svgEl) svgEl.innerHTML = '';
+
+            const scripts = docClone.querySelectorAll('script');
+            scripts.forEach(s => {
+                if (s.textContent.includes('let familyData =')) {
+                    const jsonCompleto = JSON.stringify(familyData);
+                    s.textContent = `
+                        let familyData = ${jsonCompleto};
+                        let svg, g, zoom, root;
+                        let searchableNodes = [];
+                        ${orthogonalPath.toString()}
+                        ${toggleLeftSidebar.toString()}
+                        ${renderUniqueBranchesList.toString()}
+                        ${focusBranchByName.toString()}
+                        ${extractYear.toString()}
+                        ${calcularEdadDesdeNacimiento.toString()}
+                        ${showDetails.toString()}
+                        ${abrirFoto.toString()}
+                        ${closePhotoModal.toString()}
+                        ${closeSidebar.toString()}
+                        ${resetZoom.toString()}
+                        ${zoomIn.toString()}
+                        ${zoomOut.toString()}
+                        ${searchMember.toString()}
+                        ${measurePersonBlock.toString()}
+                        ${updateViz.toString()}
+                        ${initTree.toString()}
+                        window.onload = () => {
+                            initTree();
+                        };
+                    `;
+                }
+            });
+
+            const htmlFinal = "<!DOCTYPE html>\n" + docClone.outerHTML;
+            const blob = new Blob([htmlFinal], { type: "text/html;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "Fam_Guzmán.html";
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        window.onload = initTree;
+    </script>
+</body>
+</html>
